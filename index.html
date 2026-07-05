@@ -596,9 +596,30 @@ scanInputEl.addEventListener('keydown', function(e) {
 /* ---------- Camera scanning ---------- */
 let html5QrCode = null;
 let lastCameraScan = { code: '', time: 0 };
+let cameraCandidateBuffer = [];
+let cameraCandidateTimer = null;
+
+function pickBestCameraCandidate(candidates) {
+  const cleaned = candidates
+    .map(c => ({ raw: c.raw, id: normalize(c.raw).replace(/[^A-Z0-9]/g, '') }))
+    .filter(c => c.id && c.id.length >= 4 && !/^(HTTP|HTTPS|WWW|OD|QR|MOBILE|WIFI)/i.test(c.raw));
+
+  if (!cleaned.length) return null;
+
+  const recognized = cleaned.filter(c => orderMap.has(c.id));
+  if (recognized.length) {
+    recognized.sort((a, b) => b.id.length - a.id.length || (b.raw.length - a.raw.length));
+    return recognized[0].id;
+  }
+
+  cleaned.sort((a, b) => b.id.length - a.id.length || (b.raw.length - a.raw.length));
+  return cleaned[0].id;
+}
 
 function queueCameraScan(decodedText) {
-  const raw = (decodedText || '').toString();
+  const raw = (decodedText || '').toString().trim();
+  if (!raw) return;
+
   const id = normalize(raw).replace(/[^A-Z0-9]/g, '');
   if (!id) return;
 
@@ -607,19 +628,30 @@ function queueCameraScan(decodedText) {
   if (!looksLikeParcelCode) return;
 
   if (id === lastCameraScan.code && (now - lastCameraScan.time) < 120) return;
-  lastCameraScan = { code: id, time: now };
 
-  if (orderMap.has(id)) {
-    processScan(id);
-  }
+  cameraCandidateBuffer.push({ raw, time: now });
+  cameraCandidateBuffer = cameraCandidateBuffer.filter(c => now - c.time < 800);
+
+  if (cameraCandidateTimer) clearTimeout(cameraCandidateTimer);
+  cameraCandidateTimer = setTimeout(() => {
+    const bestId = pickBestCameraCandidate(cameraCandidateBuffer);
+    cameraCandidateBuffer = [];
+    cameraCandidateTimer = null;
+    if (!bestId) return;
+
+    lastCameraScan = { code: bestId, time: Date.now() };
+    if (orderMap.has(bestId)) {
+      processScan(bestId);
+    }
+  }, 90);
 }
 
 async function startCameraScanner() {
   html5QrCode = new Html5Qrcode('cameraView');
   const config = {
     fps: 20,
-    qrbox: { width: 420, height: 320 },
-    aspectRatio: 0.95,
+    qrbox: { width: 520, height: 380 },
+    aspectRatio: 1.0,
     disableFlip: false,
     videoConstraints: {
       facingMode: 'environment',
@@ -629,11 +661,14 @@ async function startCameraScanner() {
     formatsToSupport: [
       Html5QrcodeSupportedFormats.CODE_128,
       Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.CODE_93,
+      Html5QrcodeSupportedFormats.CODABAR,
       Html5QrcodeSupportedFormats.EAN_13,
       Html5QrcodeSupportedFormats.EAN_8,
       Html5QrcodeSupportedFormats.UPC_A,
       Html5QrcodeSupportedFormats.UPC_E,
-      Html5QrcodeSupportedFormats.ITF
+      Html5QrcodeSupportedFormats.ITF,
+      Html5QrcodeSupportedFormats.DATA_MATRIX
     ]
   };
 
