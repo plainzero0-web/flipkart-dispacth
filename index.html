@@ -143,7 +143,6 @@
 <body>
 
 <h1>Dispatch checker</h1>
-<p class="sub">Drop your order CSV and/or label PDF below — it auto-detects which is which. Cancelled orders get highlighted immediately; scan a parcel to flag it live.</p>
 
 <div class="card">
   <div id="dropZone">
@@ -156,7 +155,7 @@
 
   <div class="toggle-row">
     <input type="checkbox" id="simToggle" checked />
-    <label style="margin:0;" for="simToggle">Simulate 5 test cancellations (preview only — untick once using real live cancellation data)</label>
+    <label style="margin:0; font-size:12px;" for="simToggle">Test box: 5 orders</label>
   </div>
   <div class="toggle-note" id="simNote">Test mode: 5 orders from your CSV are being randomly marked "cancelled" just so you can see how the highlighting and scanning behaves. This is NOT real cancellation data.</div>
 </div>
@@ -553,22 +552,25 @@ function pulseScanInput() {
   warnPulseTimer = setTimeout(() => el.classList.remove('warn-pulse'), 900);
 }
 
-function flash(status, sku, rawId) {
+function flash(status, sku, rawId, orderId = '', trackingId = '') {
   const box = document.getElementById('liveFlash');
   const icon = document.getElementById('flashIcon');
   const msg = document.getElementById('flashMsg');
   const skuEl = document.getElementById('flashSku');
+  const displayId = (orderId && orderId.length >= 6) ? orderId.slice(-6) : (trackingId || '').slice(-6);
+  const idHtml = displayId ? '<div style="font-size:18px;font-weight:800;font-family:monospace;margin-top:4px;">' + displayId + '</div>' : '';
+  const skuHtml = sku ? '<div style="font-size:13px;color:#444;margin-top:3px;">' + sku + '</div>' : '';
   box.style.display = 'block';
   box.className = status;
   if (status === 'ok') {
     stopContinuousAlert();
     icon.textContent = '✓'; msg.textContent = 'OK — dispatch this parcel';
     beep(880, 0.16, 0.3);
-    skuEl.textContent = sku || '';
+    skuEl.innerHTML = (idHtml || '') + skuHtml;
   } else if (status === 'cancelled') {
     icon.textContent = '✕'; msg.textContent = 'PULL OUT — cancelled';
     playCancelledAlert();
-    skuEl.textContent = sku || '';
+    skuEl.innerHTML = (idHtml || '') + skuHtml;
   } else if (status === 'warn') {
     stopContinuousAlert();
     icon.textContent = '⚠️'; msg.textContent = 'Not in this dispatch list';
@@ -605,7 +607,7 @@ function processScan(rawValue) {
   }
 
   order.scanned = true;
-  flash(order.status === 'ok' ? 'ok' : 'cancelled', order.sku);
+  flash(order.status === 'ok' ? 'ok' : 'cancelled', order.sku, '', order.orderId, order.trackingId);
   renderTable();
   updateStats();
   if (order.status === 'cancelled') {
@@ -667,7 +669,7 @@ function queueCameraScan(decodedText) {
   if (!id) return;
 
   const now = Date.now();
-  const looksLikeParcelCode = /[A-Z0-9]{4,}/.test(id) && !/^(HTTP|HTTPS|WWW|OD|QR|MOBILE|WIFI)/i.test(raw);
+  const looksLikeParcelCode = /^[A-Z0-9]{4,24}$/.test(id) && !/^(HTTP|HTTPS|WWW|WIFI|MOBILE|QR|MATMSG|BEGIN|TEL|MAILTO|SMSTO|GEO)/i.test(raw);
   if (!looksLikeParcelCode) return;
 
   if (id === lastCameraScan.code && (now - lastCameraScan.time) < 55) return;
