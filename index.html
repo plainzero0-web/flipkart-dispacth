@@ -648,15 +648,22 @@ function queueCameraScan(decodedText) {
 
 async function startCameraScanner() {
   html5QrCode = new Html5Qrcode('cameraView');
+  const viewportW = Math.max(window.innerWidth || 360, 320);
+  const viewportH = Math.max(window.innerHeight || 640, 420);
+  const isPortrait = viewportH >= viewportW;
+  const qrbox = isPortrait
+    ? { width: Math.min(680, Math.max(320, Math.round(viewportW * 0.94))), height: Math.min(760, Math.max(360, Math.round(viewportH * 0.72))) }
+    : { width: Math.min(760, Math.max(420, Math.round(viewportW * 0.82))), height: Math.min(420, Math.max(260, Math.round(viewportH * 0.68))) };
   const config = {
-    fps: 20,
-    qrbox: { width: 520, height: 380 },
-    aspectRatio: 1.0,
+    fps: 12,
+    qrbox,
+    aspectRatio: isPortrait ? 0.95 : 1.35,
     disableFlip: false,
     videoConstraints: {
       facingMode: 'environment',
       width: { ideal: 1920 },
-      height: { ideal: 1080 }
+      height: { ideal: 1080 },
+      focusMode: 'continuous'
     },
     formatsToSupport: [
       Html5QrcodeSupportedFormats.CODE_128,
