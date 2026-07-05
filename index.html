@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1a1a1a">
+<title>Dispatch Checker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: #f2f3f5;
+    color: #1a1a1a;
+    padding: 16px;
+  }
+  h1 { font-size: 20px; font-weight: 700; margin: 0 0 2px; }
+  p.sub { color: #666; font-size: 13px; margin: 0 0 18px; }
+  .card {
+    background: #fff;
+    border: 1px solid #e2e2e2;
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  }
+  label { font-size: 12.5px; color: #555; display: block; margin-bottom: 6px; font-weight: 600; }
+  button {
+    background: #1a1a1a; color: #fff; border: none; border-radius: 8px;
+    padding: 9px 14px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 6px;
+  }
+  button.secondary { background: #eee; color: #333; }
+
+  #dropZone {
+    border: 2px dashed #bbb;
+    border-radius: 10px;
+    padding: 12px 14px;
+    text-align: center;
+    color: #777;
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  #dropZone.dragover { border-color: #1a1a1a; background: #f7f7f7; color: #1a1a1a; }
+  #dropZone .big { font-size: 18px; margin-bottom: 2px; }
+  #fileInput { display: none; }
+
+  #loadedFiles { margin-top: 12px; }
+  .file-chip {
+    display: flex; align-items: center; gap: 10px;
+    background: #f7f7f5; border-radius: 10px; padding: 8px 12px; margin-top: 8px; font-size: 13px;
+  }
+  .file-chip .badge {
+    font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; color: #fff; white-space: nowrap;
+  }
+  .badge-csv { background: #2563eb; }
+  .badge-pdf { background: #7c3aed; }
+  .badge-unknown { background: #999; }
+  .file-chip .detail { color: #666; font-size: 12px; }
+
+  .toggle-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; }
+  .toggle-row input { width: 16px; height: 16px; }
+  .toggle-note { font-size: 11.5px; color: #a15c00; background: #fff3cd; padding: 6px 10px; border-radius: 8px; margin-top: 6px; display: none; }
+  .toggle-note.show { display: block; }
+
+  #status { font-size: 12.5px; margin-top: 8px; color: #555; }
+
+  #scanInput {
+    width: 100%; font-size: 22px; padding: 14px; border-radius: 10px;
+    border: 2px solid #999; text-align: center; font-weight: 600;
+  }
+  #liveFlash { display: none; margin-top: 12px; border-radius: 12px; padding: 16px; text-align: center; }
+  #liveFlash.ok { background: #d7f5df; border: 2px solid #2fa84f; }
+  #liveFlash.cancelled { background: #fbdada; border: 2px solid #d33; }
+  #liveFlash.warn { background: #fff3cd; border: 2px solid #c99a06; }
+  #liveFlash.ready { background: #f0f0f0; border: 2px dashed #bbb; color: #888; }
+  #liveFlash .icon { font-size: 30px; }
+  #liveFlash .msg { font-size: 18px; font-weight: 700; margin-top: 2px; }
+  #liveFlash .sku { font-size: 13px; color: #444; margin-top: 2px; }
+
+  .summary-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 4px; }
+  @media (max-width: 700px) { .summary-row { grid-template-columns: repeat(2, 1fr); } }
+  .stat {
+    background: #f7f7f5; border-radius: 10px; padding: 10px 8px; text-align: center;
+    border: 1px solid #eee;
+  }
+  .stat .icon { font-size: 16px; margin-bottom: 2px; }
+  .stat .num { font-size: 22px; font-weight: 800; line-height: 1.1; }
+  .stat .lbl { font-size: 10.5px; color: #666; margin-top: 2px; }
+  .stat.total { background: #f0f1f3; }
+  .stat.ready .num { color: #1565c0; }
+  .stat.ready { background: #e8f1fb; }
+  .stat.cancelled .num { color: #c62828; }
+  .stat.cancelled { background: #fdeaea; }
+  .stat.scanned .num { color: #2e7d32; }
+  .stat.scanned { background: #eaf7ee; }
+  .stat.removed .num { color: #8e24aa; }
+  .stat.removed { background: #f5eaf8; }
+
+  .table-wrap { max-height: 640px; overflow-y: auto; border: 1px solid #eee; border-radius: 10px; margin-top: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    position: sticky; top: 0; background: #fafafa; text-align: left;
+    padding: 8px 10px; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.03em;
+    color: #666; border-bottom: 1px solid #e5e5e5; z-index: 1;
+  }
+  td { padding: 8px 10px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  tr.row-cancelled { background: #fdecec; }
+  tr.row-ok { background: #ffffff; }
+  tr.row-unknown { background: #fff8e5; }
+  tr.row-scanned { outline: 2px solid #1a1a1a; outline-offset: -2px; }
+  .last6 { font-family: monospace; font-weight: 700; font-size: 14px; }
+  .last6.hl { background: #d33; color: #fff; padding: 2px 6px; border-radius: 5px; }
+  .fullid { font-family: monospace; font-size: 11px; color: #888; }
+  .sku { font-size: 12.5px; }
+  .pill { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .pill-ok { background: #2fa84f; color: #fff; }
+  .pill-cancelled { background: #d33; color: #fff; }
+  .pill-test { background: #a15c00; color: #fff; margin-left: 4px; }
+  .check { font-size: 15px; }
+  .footer-note { font-size: 11.5px; color: #888; margin-top: 18px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<h1>Dispatch checker</h1>
+<p class="sub">Drop your order CSV and/or label PDF below — it auto-detects which is which. Cancelled orders get highlighted immediately; scan a parcel to flag it live.</p>
+
+<div class="card">
+  <div id="dropZone">
+    <div class="big">📥</div>
+    <div><b>Drop Order CSV / Label PDF here</b> (any format — full or cropped label-only) or tap to choose</div>
+  </div>
+  <input type="file" id="fileInput" accept=".csv,.pdf" multiple />
+  <div id="loadedFiles"></div>
+  <div id="status">No files loaded yet.</div>
+
+  <div class="toggle-row">
+    <input type="checkbox" id="simToggle" checked />
+    <label style="margin:0;" for="simToggle">Simulate 5 test cancellations (preview only — untick once using real live cancellation data)</label>
+  </div>
+  <div class="toggle-note" id="simNote">Test mode: 5 orders from your CSV are being randomly marked "cancelled" just so you can see how the highlighting and scanning behaves. This is NOT real cancellation data.</div>
+</div>
+
+<div class="card" id="summaryCard" style="display:none;">
+  <div class="summary-row">
+    <div class="stat total"><div class="icon">📦</div><div class="num" id="statTotal">0</div><div class="lbl">Total packed</div></div>
+    <div class="stat ready"><div class="icon">🚚</div><div class="num" id="statReady">0</div><div class="lbl">Ready to dispatch</div></div>
+    <div class="stat scanned"><div class="icon">✅</div><div class="num" id="statScanned">0</div><div class="lbl">Scanned &amp; shipped</div></div>
+    <div class="stat cancelled"><div class="icon">🚫</div><div class="num" id="statCancelled">0</div><div class="lbl">Cancelled total</div></div>
+    <div class="stat removed"><div class="icon">🗑</div><div class="num" id="statRemoved">0</div><div class="lbl">Removed from pile</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <label>Scan or type parcel tracking number / AWB</label>
+  <input type="text" id="scanInput" placeholder="Scan barcode here" autocomplete="off" />
+  <button id="cameraBtn" style="width:100%; margin-top:10px;">📷 Scan with camera</button>
+  <div id="cameraWrap" style="display:none; margin-top:10px;">
+    <div id="cameraView" style="width:100%; border-radius:10px; overflow:hidden;"></div>
+    <button class="secondary" id="cameraStop" style="width:100%;">Stop camera</button>
+  </div>
+  <div id="liveFlash">
+    <div class="icon" id="flashIcon"></div>
+    <div class="msg" id="flashMsg"></div>
+    <div class="sku" id="flashSku"></div>
+  </div>
+</div>
+
+<div class="card">
+  <label>All packed orders (cancelled highlighted red — scroll for full list, handles up to 1000 rows)</label>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th></th><th>Last 6</th><th>Order ID / Tracking</th><th>SKU</th><th>Status</th></tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="footer-note">
+  Runs fully offline-friendly in your browser (only the PDF-reading library loads from a CDN once). CSV gives Order ID, SKU and Tracking ID directly. PDF gives the physical parcel list by reading each label's AWB/tracking number. Whichever file(s) you drop, matching happens automatically on Tracking ID. Scanning a parcel just marks it as physically checked; it never changes cancelled/active status itself.
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let csvRows = null;      // [{trackingId, orderId, sku, state}]
+let pdfRows = null;      // [{trackingId, orderId, sku}]
+let orders = [];
+let orderMap = new Map();
+
+function normalize(s) {
+  return (s || '').toString().trim().replace(/^'+/, '').replace(/["']/g, '').toUpperCase();
+}
+
+function beep(freq, duration) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = freq; osc.type = 'sine';
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    osc.start(); osc.stop(ctx.currentTime + duration);
+  } catch (e) {}
+}
+
+/* ---------- CSV parsing ---------- */
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') { if (text[i+1] === '"') { field += '"'; i++; } else { inQuotes = false; } }
+      else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else if (c === '\r') {}
+      else field += c;
+    }
+  }
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  return rows;
+}
+function findCol(headers, ...keywords) {
+  for (const kw of keywords) {
+    const idx = headers.findIndex(h => h.toLowerCase().includes(kw.toLowerCase()));
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
+function extractCSVRows(text) {
+  const rows = parseCSV(text);
+  if (rows.length < 2) return null;
+  const headers = rows[0].map(h => h.trim());
+  const trackingIdx = findCol(headers, 'tracking id');
+  const orderIdx = findCol(headers, 'order id');
+  const skuIdx = findCol(headers, 'sku');
+  const stateIdx = findCol(headers, 'order state');
+  if (trackingIdx === -1) return null;
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || r.length <= trackingIdx) continue;
+    const tid = normalize(r[trackingIdx]);
+    if (!tid) continue;
+    out.push({
+      trackingId: tid,
+      orderId: orderIdx !== -1 ? (r[orderIdx] || '').trim() : '',
+      sku: skuIdx !== -1 ? (r[skuIdx] || '').trim() : '',
+      state: stateIdx !== -1 ? (r[stateIdx] || '').trim() : ''
+    });
+  }
+  return out;
+}
+
+/* ---------- PDF parsing ---------- */
+async function extractPDFRows(arrayBuffer) {
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const out = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const text = content.items.map(it => it.str).join(' ');
+
+    // A page (cropped label-only, or full label+invoice) can contain more than
+    // one parcel if multiple labels were laid out per page, so capture all AWB matches.
+    const awbMatches = [...text.matchAll(/AWB\s*No\.?\s*([A-Za-z0-9]{6,20})/gi)];
+    // Order ID (format ODxxxxxxxxxx) is printed directly on the label itself
+    // (top block, near courier name) in BOTH cropped and full files, so this
+    // works regardless of whether the Tax Invoice half is present.
+    const orderMatches = [...text.matchAll(/\bOD\d{10,20}\b/g)];
+    const skuMatch = text.match(/SKU\s*ID\s*\|\s*Description\s*QTY\s*\d*\s*([a-zA-Z0-9\-]+)\s*\|/i);
+
+    if (awbMatches.length === 0) continue;
+
+    awbMatches.forEach((m, idx) => {
+      out.push({
+        trackingId: normalize(m[1]),
+        orderId: orderMatches[idx] ? orderMatches[idx][0].trim() : (orderMatches[0] ? orderMatches[0][0].trim() : ''),
+        sku: skuMatch ? skuMatch[1].trim() : ''
+      });
+    });
+  }
+  return out;
+}
+
+/* ---------- File handling ---------- */
+function addFileChip(name, type, detail) {
+  const wrap = document.getElementById('loadedFiles');
+  const chip = document.createElement('div');
+  chip.className = 'file-chip';
+  const badgeClass = type === 'csv' ? 'badge-csv' : (type === 'pdf' ? 'badge-pdf' : 'badge-unknown');
+  const badgeText = type === 'csv' ? 'ORDER CSV' : (type === 'pdf' ? 'LABEL PDF' : 'UNKNOWN');
+  chip.innerHTML = '<span class="badge ' + badgeClass + '">' + badgeText + '</span>' +
+                   '<span>' + name + '</span>' +
+                   '<span class="detail">' + detail + '</span>';
+  wrap.appendChild(chip);
+}
+
+function setStatus(msg, isError) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.style.color = isError ? '#c00' : '#2a2';
+}
+
+async function handleFile(file) {
+  const name = file.name;
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.csv')) {
+    const text = await file.text();
+    const rows = extractCSVRows(text);
+    if (!rows) {
+      addFileChip(name, 'unknown', 'Could not find a Tracking ID column — not a recognized order CSV.');
+      return;
+    }
+    csvRows = rows;
+    addFileChip(name, 'csv', rows.length + ' orders found');
+  } else if (lower.endsWith('.pdf')) {
+    addFileChip(name, 'pdf', 'Reading labels…');
+    const buf = await file.arrayBuffer();
+    try {
+      const rows = await extractPDFRows(buf);
+      pdfRows = rows;
+      // update the chip detail
+      const chips = document.querySelectorAll('.file-chip');
+      const lastChip = chips[chips.length - 1];
+      if (lastChip) lastChip.querySelector('.detail').textContent = rows.length + ' parcels found';
+    } catch (e) {
+      const chips = document.querySelectorAll('.file-chip');
+      const lastChip = chips[chips.length - 1];
+      if (lastChip) lastChip.querySelector('.detail').textContent = 'Could not read PDF text.';
+    }
+  } else {
+    addFileChip(name, 'unknown', 'Not a .csv or .pdf file — ignored.');
+    return;
+  }
+  rebuild();
+}
+
+function handleFiles(fileList) {
+  const files = Array.from(fileList);
+  files.forEach(handleFile);
+}
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  handleFiles(e.dataTransfer.files);
+});
+
+document.getElementById('simToggle').addEventListener('change', rebuild);
+
+/* ---------- Build combined table ---------- */
+function pickSimulatedCancelled(list, n) {
+  const copy = list.slice();
+  const chosen = new Set();
+  for (let i = 0; i < n && copy.length > 0; i++) {
+    const idx = Math.floor(Math.random() * copy.length);
+    chosen.add(copy[idx].trackingId);
+    copy.splice(idx, 1);
+  }
+  return chosen;
+}
+
+let simulatedCancelledSet = null;
+
+function rebuild() {
+  const simOn = document.getElementById('simToggle').checked;
+  document.getElementById('simNote').className = 'toggle-note' + (simOn ? ' show' : '');
+
+  // base list: prefer PDF (the physical packed manifest) if available, else CSV
+  let base = [];
+  if (pdfRows && pdfRows.length) {
+    base = pdfRows.map(r => ({ trackingId: r.trackingId, orderId: r.orderId, sku: r.sku }));
+  } else if (csvRows && csvRows.length) {
+    base = csvRows.map(r => ({ trackingId: r.trackingId, orderId: r.orderId, sku: r.sku }));
+  }
+  if (base.length === 0) return;
+
+  // lookup for CSV info (authoritative for order id / sku / state)
+  const csvMap = new Map();
+  if (csvRows) csvRows.forEach(r => csvMap.set(r.trackingId, r));
+
+  if (simOn) {
+    if (!simulatedCancelledSet || simulatedCancelledSet.size === 0) {
+      simulatedCancelledSet = pickSimulatedCancelled(base, Math.min(5, base.length));
+    }
+  } else {
+    simulatedCancelledSet = null;
+  }
+
+  orders = base.map(b => {
+    const csvInfo = csvMap.get(b.trackingId);
+    const orderId = (csvInfo && csvInfo.orderId) || b.orderId || '';
+    const sku = (csvInfo && csvInfo.sku) || b.sku || '';
+
+    let status = 'unknown';
+    let isTest = false;
+
+    if (simulatedCancelledSet && simulatedCancelledSet.has(b.trackingId)) {
+      status = 'cancelled';
+      isTest = true;
+    } else if (csvInfo) {
+      const state = (csvInfo.state || '').toLowerCase();
+      status = (state === '' || state.includes('ready') || state.includes('dispatch')) ? 'ok' : 'cancelled';
+    } else if (csvRows) {
+      // csv loaded but this tracking id missing entirely -> treat as cancelled
+      status = 'cancelled';
+    }
+
+    return { trackingId: b.trackingId, orderId, sku, status, isTest, scanned: false };
+  });
+
+  orderMap = new Map();
+  orders.forEach(o => orderMap.set(o.trackingId, o));
+
+  orders.sort((a, b) => {
+    const rank = { cancelled: 0, unknown: 1, ok: 2 };
+    return rank[a.status] - rank[b.status];
+  });
+
+  renderTable();
+  updateStats();
+  document.getElementById('summaryCard').style.display = 'block';
+  setStatus(orders.length + ' orders loaded and matched.', false);
+}
+
+function renderTable() {
+  const body = document.getElementById('tableBody');
+  body.innerHTML = '';
+  orders.forEach(o => {
+    const tr = document.createElement('tr');
+    tr.className = 'row-' + o.status + (o.scanned ? ' row-scanned' : '');
+    tr.id = 'row-' + o.trackingId;
+    const last6Source = (o.orderId && o.orderId.length >= 6) ? o.orderId : o.trackingId;
+    const last6 = last6Source.slice(-6);
+    const last6Html = o.status === 'cancelled'
+      ? '<span class="last6 hl">' + last6 + '</span>'
+      : '<span class="last6">' + last6 + '</span>';
+    let pill = '';
+    if (o.status === 'cancelled') pill = '<span class="pill pill-cancelled">' + (o.scanned ? 'REMOVED' : 'CANCELLED') + '</span>';
+    else if (o.status === 'ok') pill = '<span class="pill pill-ok">ACTIVE</span>';
+    else pill = '<span class="pill" style="background:#999;color:#fff;">UNKNOWN</span>';
+    if (o.isTest) pill += '<span class="pill pill-test">TEST</span>';
+    const check = o.scanned ? (o.status === 'cancelled' ? '<span class="check" style="color:#c62828;">🗑</span>' : '<span class="check">✓</span>') : '';
+    tr.style.opacity = (o.scanned && o.status === 'cancelled') ? '0.55' : '1';
+    if (o.scanned && o.status === 'cancelled') tr.style.textDecoration = 'line-through';
+    tr.innerHTML =
+      '<td>' + check + '</td>' +
+      '<td>' + last6Html + '</td>' +
+      '<td><div class="fullid">' + o.trackingId + '</div><div class="fullid">' + (o.orderId || '') + '</div></td>' +
+      '<td class="sku">' + (o.sku || '') + '</td>' +
+      '<td>' + pill + '</td>';
+    body.appendChild(tr);
+  });
+}
+
+function updateStats() {
+  const total = orders.length;
+  const cancelledTotal = orders.filter(o => o.status === 'cancelled').length;
+  const scannedShipped = orders.filter(o => o.status === 'ok' && o.scanned).length;
+  const readyToDispatch = orders.filter(o => o.status === 'ok' && !o.scanned).length;
+  const removed = orders.filter(o => o.status === 'cancelled' && o.scanned).length;
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statReady').textContent = readyToDispatch;
+  document.getElementById('statScanned').textContent = scannedShipped;
+  document.getElementById('statCancelled').textContent = cancelledTotal;
+  document.getElementById('statRemoved').textContent = removed;
+}
+
+let flashResetTimer = null;
+function flash(status, sku, rawId) {
+  const box = document.getElementById('liveFlash');
+  const icon = document.getElementById('flashIcon');
+  const msg = document.getElementById('flashMsg');
+  const skuEl = document.getElementById('flashSku');
+  box.style.display = 'block';
+  box.className = status;
+  if (status === 'ok') {
+    icon.textContent = '✓'; msg.textContent = 'OK — dispatch this parcel'; beep(880, 0.15);
+    skuEl.textContent = sku || '';
+  } else if (status === 'cancelled') {
+    icon.textContent = '✕'; msg.textContent = 'PULL OUT — cancelled'; beep(220, 0.4);
+    skuEl.textContent = sku || '';
+  } else if (status === 'warn') {
+    icon.textContent = '⚠️'; msg.textContent = 'Unrecognized ID — not in loaded list';
+    beep(500, 0.12); setTimeout(() => beep(500, 0.12), 180);
+    skuEl.innerHTML = 'Scanned value: <b style="font-family:monospace;">' + (rawId || '') + '</b> — check this parcel manually';
+  }
+
+  if (flashResetTimer) clearTimeout(flashResetTimer);
+  flashResetTimer = setTimeout(() => {
+    box.className = 'ready';
+    icon.textContent = '📷';
+    msg.textContent = 'Ready for next scan…';
+    skuEl.textContent = '';
+  }, status === 'warn' ? 2600 : 1400);
+}
+
+function processScan(rawValue) {
+  clearPendingCameraScan();
+  const id = normalize(rawValue);
+  if (!id) return;
+  const order = orderMap.get(id);
+  if (!order) { flash('warn', '', rawValue); return; }
+  order.scanned = true;
+  flash(order.status === 'ok' ? 'ok' : 'cancelled', order.sku);
+  renderTable();
+  updateStats();
+  const row = document.getElementById('row-' + id);
+  if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+let scanInputTimer = null;
+const scanInputEl = document.getElementById('scanInput');
+scanInputEl.addEventListener('input', function() {
+  if (scanInputTimer) clearTimeout(scanInputTimer);
+  const val = this.value;
+  if (!val.trim()) return;
+  // auto-submit shortly after typing/scanning pauses — no Enter needed.
+  // Fast barcode scanners finish typing within a few ms, so this fires almost immediately for them;
+  // for manual typing it fires right after you stop typing.
+  scanInputTimer = setTimeout(() => {
+    processScan(this.value);
+    this.value = '';
+  }, 180);
+});
+scanInputEl.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter') return;
+  if (scanInputTimer) clearTimeout(scanInputTimer);
+  const val = this.value;
+  this.value = '';
+  processScan(val);
+});
+
+/* ---------- Camera scanning ---------- */
+let html5QrCode = null;
+let lastCameraScan = { code: '', time: 0 };
+let pendingCameraScan = null;
+let pendingCameraTimer = null;
+let cameraCandidate = { value: '', hits: 0, time: 0 };
+
+function clearPendingCameraScan() {
+  if (pendingCameraTimer) {
+    clearTimeout(pendingCameraTimer);
+    pendingCameraTimer = null;
+  }
+  pendingCameraScan = null;
+}
+
+function queueCameraScan(decodedText) {
+  const id = normalize(decodedText);
+  if (!id) return;
+
+  const now = Date.now();
+  const looksLikeParcelCode = /^[A-Z0-9]{4,20}$/.test(id) && !/^HTTP|^WWW|^OD/i.test(id);
+
+  if (id === lastCameraScan.code && (now - lastCameraScan.time) < 900) return;
+  lastCameraScan = { code: id, time: now };
+
+  if (orderMap.has(id)) {
+    clearPendingCameraScan();
+    processScan(id);
+    return;
+  }
+
+  if (looksLikeParcelCode) {
+    if (cameraCandidate.value === id && (now - cameraCandidate.time) < 500) {
+      cameraCandidate.hits += 1;
+    } else {
+      cameraCandidate = { value: id, hits: 1, time: now };
+    }
+
+    if (pendingCameraTimer) clearTimeout(pendingCameraTimer);
+    pendingCameraScan = id;
+    pendingCameraTimer = setTimeout(() => {
+      const finalId = normalize(pendingCameraScan);
+      if (!finalId) {
+        clearPendingCameraScan();
+        return;
+      }
+      if (orderMap.has(finalId)) {
+        clearPendingCameraScan();
+        processScan(finalId);
+        return;
+      }
+      clearPendingCameraScan();
+    }, cameraCandidate.hits >= 2 ? 250 : 500);
+    return;
+  }
+
+  clearPendingCameraScan();
+}
+
+document.getElementById('cameraBtn').addEventListener('click', async function() {
+  document.getElementById('cameraWrap').style.display = 'block';
+  this.style.display = 'none';
+  html5QrCode = new Html5Qrcode('cameraView');
+  const config = {
+    fps: 14,
+    qrbox: { width: 340, height: 220 },
+    aspectRatio: 0.95,
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.ITF
+    ]
+  };
+  try {
+    await html5QrCode.start(
+      { facingMode: 'environment' },
+      config,
+      (decodedText) => {
+        queueCameraScan(decodedText);
+      },
+      () => { /* ignore per-frame decode failures */ }
+    );
+  } catch (err) {
+    setStatus('Could not access camera: ' + err, true);
+    document.getElementById('cameraWrap').style.display = 'none';
+    document.getElementById('cameraBtn').style.display = 'block';
+  }
+});
+
+document.getElementById('cameraStop').addEventListener('click', async function() {
+  if (html5QrCode) {
+    try { await html5QrCode.stop(); html5QrCode.clear(); } catch (e) {}
+  }
+  document.getElementById('cameraWrap').style.display = 'none';
+  document.getElementById('cameraBtn').style.display = 'block';
+});
+</script>
+
+</body>
+</html>
