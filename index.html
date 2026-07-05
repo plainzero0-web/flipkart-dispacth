@@ -221,13 +221,27 @@ function beep(freq, duration, volume = 0.28) {
     const gain = ctx.createGain();
     osc.connect(gain); gain.connect(ctx.destination);
     osc.frequency.setValueAtTime(freq, ctx.currentTime);
-    osc.type = 'sine';
+    osc.type = 'square';
     gain.gain.setValueAtTime(0, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(volume, ctx.currentTime + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + duration + 0.01);
   } catch (e) {}
+}
+
+function playCancelledAlert() {
+  stopContinuousAlert();
+  const playOne = () => {
+    beep(1450, 0.11, 0.38);
+    setTimeout(() => beep(1700, 0.08, 0.3), 45);
+  };
+  playOne();
+  if (navigator.vibrate) navigator.vibrate([110, 55, 110]);
+  continuousAlertTimer = setInterval(() => {
+    playOne();
+    if (navigator.vibrate) navigator.vibrate(110);
+  }, 480);
 }
 
 /* ---------- CSV parsing ---------- */
@@ -526,10 +540,8 @@ function flash(status, sku, rawId) {
     beep(880, 0.16, 0.3);
     skuEl.textContent = sku || '';
   } else if (status === 'cancelled') {
-    stopContinuousAlert();
     icon.textContent = '✕'; msg.textContent = 'PULL OUT — cancelled';
-    beep(220, 0.6, 0.75);
-    continuousAlertTimer = setInterval(() => beep(220, 0.6, 0.75), 420);
+    playCancelledAlert();
     skuEl.textContent = sku || '';
   } else if (status === 'warn') {
     stopContinuousAlert();
