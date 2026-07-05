@@ -514,17 +514,56 @@ function flash(status, sku, rawId) {
   }, status === 'warn' ? 2600 : 1400);
 }
 
+function canonicalCode(rawValue) {
+  return normalize(rawValue).replace(/[^A-Z0-9]/g, '');
+}
+
+function findMatchingOrder(rawValue) {
+  const cleaned = canonicalCode(rawValue);
+  if (!cleaned) return null;
+
+  if (orderMap.has(cleaned)) return orderMap.get(cleaned);
+
+  let bestMatch = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+  orderMap.forEach((order) => {
+    const key = canonicalCode(order.trackingId);
+    if (!key) return;
+
+    const directMatch = cleaned === key;
+    const suffixMatch = cleaned.endsWith(key) || key.endsWith(cleaned);
+    const containsMatch = cleaned.includes(key) || key.includes(cleaned);
+
+    if (directMatch) {
+      bestMatch = order;
+      bestScore = 0;
+      return;
+    }
+
+    if ((suffixMatch || containsMatch) && (cleaned.length >= 6 || key.length >= 6)) {
+      const score = Math.abs(cleaned.length - key.length);
+      if (score < bestScore) {
+        bestMatch = order;
+        bestScore = score;
+      }
+    }
+  });
+
+  return bestMatch;
+}
+
 function processScan(rawValue) {
   clearPendingCameraScan();
   const id = normalize(rawValue);
   if (!id) return;
-  const order = orderMap.get(id);
-  if (!order) { flash('warn', '', rawValue); return; }
-  order.scanned = true;
-  flash(order.status === 'ok' ? 'ok' : 'cancelled', order.sku);
+  const matchingOrder = findMatchingOrder(rawValue);
+  if (!matchingOrder) { flash('warn', '', rawValue); return; }
+  const matchedId = matchingOrder.trackingId;
+  matchingOrder.scanned = true;
+  flash(matchingOrder.status === 'ok' ? 'ok' : 'cancelled', matchingOrder.sku);
   renderTable();
   updateStats();
-  const row = document.getElementById('row-' + id);
+  const row = document.getElementById('row-' + matchedId);
   if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -570,14 +609,15 @@ function queueCameraScan(decodedText) {
   if (!id) return;
 
   const now = Date.now();
-  const looksLikeParcelCode = /^[A-Z0-9]{4,20}$/.test(id) && !/^HTTP|^WWW|^OD/i.test(id);
+  const looksLikeParcelCode = /[A-Z0-9]{4,}/.test(id) && !/^(HTTP|HTTPS|WWW|OD|QR|MOBILE)/i.test(id);
 
   if (id === lastCameraScan.code && (now - lastCameraScan.time) < 900) return;
   lastCameraScan = { code: id, time: now };
 
-  if (orderMap.has(id)) {
+  const matchedOrder = findMatchingOrder(id);
+  if (matchedOrder) {
     clearPendingCameraScan();
-    processScan(id);
+    processScan(matchedOrder.trackingId);
     return;
   }
 
@@ -617,6 +657,12 @@ document.getElementById('cameraBtn').addEventListener('click', async function() 
     fps: 14,
     qrbox: { width: 340, height: 220 },
     aspectRatio: 0.95,
+    useBarCodeDetectorIfSupported: true,
+    videoConstraints: {
+      facingMode: 'environment',
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
+    },
     formatsToSupport: [
       Html5QrcodeSupportedFormats.CODE_128,
       Html5QrcodeSupportedFormats.CODE_39,
