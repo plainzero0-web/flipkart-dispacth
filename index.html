@@ -9,6 +9,7 @@
 <title>Dispatch Checker</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
 
 <style>
   * { box-sizing: border-box; }
@@ -516,11 +517,14 @@ function flash(status, sku, rawId) {
 
 function processScan(rawValue) {
   clearPendingCameraScan();
-  const id = normalize(rawValue);
+  const id = normalize(rawValue).replace(/[^A-Z0-9]/g, '');
   if (!id) return;
 
   const order = orderMap.get(id);
-  if (!order) return;
+  if (!order) {
+    flash('warn', '', rawValue);
+    return;
+  }
 
   order.scanned = true;
   flash(order.status === 'ok' ? 'ok' : 'cancelled', order.sku);
@@ -568,7 +572,7 @@ function clearPendingCameraScan() {
 }
 
 function queueCameraScan(decodedText) {
-  const id = normalize(decodedText);
+  const id = normalize(decodedText).replace(/[^A-Z0-9]/g, '');
   if (!id) return;
 
   const now = Date.now();
@@ -597,7 +601,7 @@ function queueCameraScan(decodedText) {
   if (pendingCameraTimer) clearTimeout(pendingCameraTimer);
   pendingCameraScan = id;
   pendingCameraTimer = setTimeout(() => {
-    const finalId = normalize(pendingCameraScan);
+    const finalId = normalize(pendingCameraScan).replace(/[^A-Z0-9]/g, '');
     if (!finalId) {
       clearPendingCameraScan();
       return;
@@ -606,14 +610,50 @@ function queueCameraScan(decodedText) {
       clearPendingCameraScan();
       processScan(finalId);
     } else {
+      flash('warn', '', finalId);
       clearPendingCameraScan();
     }
   }, cameraCandidate.hits >= 2 ? 250 : 500);
 }
 
-document.getElementById('cameraBtn').addEventListener('click', async function() {
-  document.getElementById('cameraWrap').style.display = 'block';
-  this.style.display = 'none';
+async function startCameraScanner() {
+  const cameraView = document.getElementById('cameraView');
+  if (window.Quagga && window.Quagga.init) {
+    try {
+      await new Promise((resolve, reject) => {
+        Quagga.init({
+          inputStream: {
+            name: 'Live',
+            type: 'LiveStream',
+            target: cameraView,
+            constraints: { facingMode: 'environment' },
+            area: { top: '0%', right: '0%', left: '0%', bottom: '0%' }
+          },
+          locator: {
+            patchSize: 'medium',
+            halfSample: true
+          },
+          decoder: {
+            readers: ['code_128_reader', 'code_39_reader', 'ean_reader', 'ean_8_reader', 'upc_reader', 'i2of5_reader']
+          },
+          locate: true
+        }, function(err) {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      Quagga.onDetected((result) => {
+        const code = result && result.codeResult && result.codeResult.code;
+        if (code) queueCameraScan(code);
+      });
+      Quagga.start();
+      return 'quagga';
+    } catch (err) {
+      return Promise.reject(err);
+    }
+  }
+
   html5QrCode = new Html5Qrcode('cameraView');
   const config = {
     fps: 12,
@@ -634,15 +674,24 @@ document.getElementById('cameraBtn').addEventListener('click', async function() 
       Html5QrcodeSupportedFormats.ITF
     ]
   };
+
+  await html5QrCode.start(
+    { facingMode: 'environment' },
+    config,
+    (decodedText) => {
+      queueCameraScan(decodedText);
+    },
+    () => { /* ignore per-frame decode failures */ }
+  );
+  return 'html5-qrcode';
+}
+
+document.getElementById('cameraBtn').addEventListener('click', async function() {
+  document.getElementById('cameraWrap').style.display = 'block';
+  this.style.display = 'none';
+
   try {
-    await html5QrCode.start(
-      { facingMode: 'environment' },
-      config,
-      (decodedText) => {
-        queueCameraScan(decodedText);
-      },
-      () => { /* ignore per-frame decode failures */ }
-    );
+    await startCameraScanner();
   } catch (err) {
     setStatus('Could not access camera: ' + err, true);
     document.getElementById('cameraWrap').style.display = 'none';
@@ -651,6 +700,9 @@ document.getElementById('cameraBtn').addEventListener('click', async function() 
 });
 
 document.getElementById('cameraStop').addEventListener('click', async function() {
+  if (window.Quagga && Quagga.isRunning()) {
+    try { Quagga.stop(); } catch (e) {}
+  }
   if (html5QrCode) {
     try { await html5QrCode.stop(); html5QrCode.clear(); } catch (e) {}
   }
