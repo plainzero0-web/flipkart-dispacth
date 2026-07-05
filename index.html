@@ -221,7 +221,7 @@ function beep(freq, duration, volume = 0.28) {
     const gain = ctx.createGain();
     osc.connect(gain); gain.connect(ctx.destination);
     osc.frequency.setValueAtTime(freq, ctx.currentTime);
-    osc.type = 'square';
+    osc.type = 'sine';
     gain.gain.setValueAtTime(0, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(volume, ctx.currentTime + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
@@ -233,15 +233,15 @@ function beep(freq, duration, volume = 0.28) {
 function playCancelledAlert() {
   stopContinuousAlert();
   const playOne = () => {
-    beep(1450, 0.11, 0.38);
-    setTimeout(() => beep(1700, 0.08, 0.3), 45);
+    beep(880, 0.12, 0.2);
+    setTimeout(() => beep(660, 0.1, 0.16), 45);
   };
   playOne();
-  if (navigator.vibrate) navigator.vibrate([110, 55, 110]);
+  if (navigator.vibrate) navigator.vibrate([180, 70, 180]);
   continuousAlertTimer = setInterval(() => {
     playOne();
-    if (navigator.vibrate) navigator.vibrate(110);
-  }, 480);
+    if (navigator.vibrate) navigator.vibrate([140, 40, 140]);
+  }, 520);
 }
 
 /* ---------- CSV parsing ---------- */
