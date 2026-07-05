@@ -498,9 +498,12 @@ function flash(status, sku, rawId) {
     skuEl.textContent = sku || '';
   } else if (status === 'cancelled') {
     icon.textContent = '✕'; msg.textContent = 'PULL OUT — cancelled';
-    beep(220, 0.5);
-    beep(180, 0.35);
-    if (navigator.vibrate) navigator.vibrate([220, 80, 220]);
+    try {
+      beep(220, 0.6);
+      setTimeout(() => beep(180, 0.45), 140);
+      setTimeout(() => beep(260, 0.3), 320);
+    } catch (e) {}
+    if (navigator.vibrate) navigator.vibrate([260, 120, 260, 120, 260]);
     skuEl.textContent = sku || '';
   } else if (status === 'warn') {
     icon.textContent = '⚠️'; msg.textContent = 'Unrecognized ID — not in loaded list';
