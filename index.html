@@ -9,7 +9,6 @@
 <title>Dispatch Checker</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
 
 <style>
   * { box-sizing: border-box; }
@@ -562,6 +561,11 @@ let lastCameraScan = { code: '', time: 0 };
 let pendingCameraScan = null;
 let pendingCameraTimer = null;
 let cameraCandidate = { value: '', hits: 0, time: 0 };
+let cameraStream = null;
+let cameraVideo = null;
+let barcodeDetector = null;
+let barcodeLoopHandle = null;
+let lastBarcodeFrameTime = 0;
 
 function clearPendingCameraScan() {
   if (pendingCameraTimer) {
@@ -616,74 +620,108 @@ function queueCameraScan(decodedText) {
   }, cameraCandidate.hits >= 2 ? 250 : 500);
 }
 
-async function startCameraScanner() {
-  const cameraView = document.getElementById('cameraView');
-  if (window.Quagga && window.Quagga.init) {
-    try {
-      await new Promise((resolve, reject) => {
-        Quagga.init({
-          inputStream: {
-            name: 'Live',
-            type: 'LiveStream',
-            target: cameraView,
-            constraints: { facingMode: 'environment' },
-            area: { top: '0%', right: '0%', left: '0%', bottom: '0%' }
-          },
-          locator: {
-            patchSize: 'medium',
-            halfSample: true
-          },
-          decoder: {
-            readers: ['code_128_reader', 'code_39_reader', 'ean_reader', 'ean_8_reader', 'upc_reader', 'i2of5_reader']
-          },
-          locate: true
-        }, function(err) {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-
-      Quagga.onDetected((result) => {
-        const code = result && result.codeResult && result.codeResult.code;
-        if (code) queueCameraScan(code);
-      });
-      Quagga.start();
-      return 'quagga';
-    } catch (err) {
-      return Promise.reject(err);
-    }
+async function startNativeBarcodeScanner(cameraView) {
+  if (!('BarcodeDetector' in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error('Native BarcodeDetector is not available on this device.');
   }
 
-  html5QrCode = new Html5Qrcode('cameraView');
-  const config = {
-    fps: 12,
-    qrbox: { width: 360, height: 240 },
-    aspectRatio: 0.95,
-    videoConstraints: {
-      facingMode: 'environment',
+  const detector = new BarcodeDetector({
+    formats: ['code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'itf']
+  });
+
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: { ideal: 'environment' },
       width: { ideal: 1280 },
       height: { ideal: 720 }
     },
-    formatsToSupport: [
-      Html5QrcodeSupportedFormats.CODE_128,
-      Html5QrcodeSupportedFormats.CODE_39,
-      Html5QrcodeSupportedFormats.EAN_13,
-      Html5QrcodeSupportedFormats.EAN_8,
-      Html5QrcodeSupportedFormats.UPC_A,
-      Html5QrcodeSupportedFormats.UPC_E,
-      Html5QrcodeSupportedFormats.ITF
-    ]
+    audio: false
+  });
+
+  const video = document.createElement('video');
+  video.autoplay = true;
+  video.playsInline = true;
+  video.muted = true;
+  video.srcObject = stream;
+  video.style.width = '100%';
+  video.style.height = '100%';
+  video.style.objectFit = 'cover';
+  cameraView.innerHTML = '';
+  cameraView.appendChild(video);
+  await video.play();
+
+  cameraStream = stream;
+  cameraVideo = video;
+  barcodeDetector = detector;
+  lastBarcodeFrameTime = 0;
+
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+
+  const scanLoop = async () => {
+    if (!cameraVideo || cameraVideo.readyState < 2) {
+      barcodeLoopHandle = requestAnimationFrame(scanLoop);
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastBarcodeFrameTime < 450) {
+      barcodeLoopHandle = requestAnimationFrame(scanLoop);
+      return;
+    }
+    lastBarcodeFrameTime = now;
+
+    canvas.width = cameraVideo.videoWidth || 1280;
+    canvas.height = cameraVideo.videoHeight || 720;
+    context.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
+
+    try {
+      const barcodes = await detector.detect(canvas);
+      const code = barcodes && barcodes[0] && barcodes[0].rawValue;
+      if (code) queueCameraScan(code);
+    } catch (e) {}
+
+    barcodeLoopHandle = requestAnimationFrame(scanLoop);
   };
 
-  await html5QrCode.start(
-    { facingMode: 'environment' },
-    config,
-    (decodedText) => {
-      queueCameraScan(decodedText);
-    },
-    () => { /* ignore per-frame decode failures */ }
-  );
-  return 'html5-qrcode';
+  barcodeLoopHandle = requestAnimationFrame(scanLoop);
+}
+
+async function startCameraScanner() {
+  const cameraView = document.getElementById('cameraView');
+  try {
+    await startNativeBarcodeScanner(cameraView);
+  } catch (err) {
+    html5QrCode = new Html5Qrcode('cameraView');
+    const config = {
+      fps: 12,
+      qrbox: { width: 360, height: 240 },
+      aspectRatio: 0.95,
+      videoConstraints: {
+        facingMode: 'environment',
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.ITF
+      ]
+    };
+
+    await html5QrCode.start(
+      { facingMode: 'environment' },
+      config,
+      (decodedText) => {
+        queueCameraScan(decodedText);
+      },
+      () => { /* ignore per-frame decode failures */ }
+    );
+  }
 }
 
 document.getElementById('cameraBtn').addEventListener('click', async function() {
@@ -700,8 +738,17 @@ document.getElementById('cameraBtn').addEventListener('click', async function() 
 });
 
 document.getElementById('cameraStop').addEventListener('click', async function() {
-  if (window.Quagga && Quagga.isRunning()) {
-    try { Quagga.stop(); } catch (e) {}
+  if (barcodeLoopHandle) {
+    cancelAnimationFrame(barcodeLoopHandle);
+    barcodeLoopHandle = null;
+  }
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(track => track.stop());
+    cameraStream = null;
+  }
+  if (cameraVideo) {
+    cameraVideo.srcObject = null;
+    cameraVideo = null;
   }
   if (html5QrCode) {
     try { await html5QrCode.stop(); html5QrCode.clear(); } catch (e) {}
