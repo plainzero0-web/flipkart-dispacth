@@ -497,7 +497,10 @@ function flash(status, sku, rawId) {
     icon.textContent = '✓'; msg.textContent = 'OK — dispatch this parcel'; beep(880, 0.15);
     skuEl.textContent = sku || '';
   } else if (status === 'cancelled') {
-    icon.textContent = '✕'; msg.textContent = 'PULL OUT — cancelled'; beep(220, 0.4);
+    icon.textContent = '✕'; msg.textContent = 'PULL OUT — cancelled';
+    beep(220, 0.5);
+    beep(180, 0.35);
+    if (navigator.vibrate) navigator.vibrate([220, 80, 220]);
     skuEl.textContent = sku || '';
   } else if (status === 'warn') {
     icon.textContent = '⚠️'; msg.textContent = 'Unrecognized ID — not in loaded list';
