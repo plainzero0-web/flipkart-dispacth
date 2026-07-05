@@ -473,12 +473,17 @@ function rebuild() {
     if (simulatedCancelledSet && simulatedCancelledSet.has(b.trackingId)) {
       status = 'cancelled';
       isTest = true;
+    } else if (pdfRows && pdfRows.length) {
+      if (!csvInfo) {
+        // PDF parcel exists, but CSV dispatch export does not include it -> treat as cancelled
+        status = 'cancelled';
+      } else {
+        const state = (csvInfo.state || '').toLowerCase();
+        status = (state === '' || state.includes('ready') || state.includes('dispatch')) ? 'ok' : 'cancelled';
+      }
     } else if (csvInfo) {
       const state = (csvInfo.state || '').toLowerCase();
       status = (state === '' || state.includes('ready') || state.includes('dispatch')) ? 'ok' : 'cancelled';
-    } else if (csvRows) {
-      // csv loaded but this tracking id missing entirely -> treat as cancelled
-      status = 'cancelled';
     }
 
     return { trackingId: b.trackingId, orderId, sku, status, isTest, scanned: false };
