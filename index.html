@@ -504,6 +504,15 @@ function updateStats() {
 }
 
 let flashResetTimer = null;
+let continuousAlertTimer = null;
+
+function stopContinuousAlert() {
+  if (continuousAlertTimer) {
+    clearInterval(continuousAlertTimer);
+    continuousAlertTimer = null;
+  }
+}
+
 function flash(status, sku, rawId) {
   const box = document.getElementById('liveFlash');
   const icon = document.getElementById('flashIcon');
@@ -512,20 +521,18 @@ function flash(status, sku, rawId) {
   box.style.display = 'block';
   box.className = status;
   if (status === 'ok') {
+    stopContinuousAlert();
     icon.textContent = '✓'; msg.textContent = 'OK — dispatch this parcel';
     beep(880, 0.16, 0.3);
     skuEl.textContent = sku || '';
   } else if (status === 'cancelled') {
+    stopContinuousAlert();
     icon.textContent = '✕'; msg.textContent = 'PULL OUT — cancelled';
-    try {
-      beep(220, 0.7, 0.7);
-      setTimeout(() => beep(180, 0.6, 0.65), 120);
-      setTimeout(() => beep(300, 0.4, 0.55), 280);
-      setTimeout(() => beep(360, 0.35, 0.45), 420);
-    } catch (e) {}
-    if (navigator.vibrate) navigator.vibrate([320, 140, 320, 140, 320]);
+    beep(220, 0.6, 0.75);
+    continuousAlertTimer = setInterval(() => beep(220, 0.6, 0.75), 420);
     skuEl.textContent = sku || '';
   } else if (status === 'warn') {
+    stopContinuousAlert();
     icon.textContent = '⚠️'; msg.textContent = 'Unrecognized ID — not in loaded list';
     beep(500, 0.12); setTimeout(() => beep(500, 0.12), 180);
     skuEl.innerHTML = 'Scanned value: <b style="font-family:monospace;">' + (rawId || '') + '</b> — check this parcel manually';
@@ -533,6 +540,7 @@ function flash(status, sku, rawId) {
 
   if (flashResetTimer) clearTimeout(flashResetTimer);
   flashResetTimer = setTimeout(() => {
+    stopContinuousAlert();
     box.className = 'ready';
     icon.textContent = '📷';
     msg.textContent = 'Ready for next scan…';
