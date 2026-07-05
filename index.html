@@ -205,7 +205,7 @@
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 let csvRows = null;      // [{trackingId, orderId, sku, state}]
-let pdfRows = null;      // [{trackingId, orderId, sku}]
+let pdfRows = [];        // [{trackingId, orderId, sku}]
 let orders = [];
 let orderMap = new Map();
 
@@ -353,6 +353,17 @@ function addFileChip(name, type, detail) {
   wrap.appendChild(chip);
 }
 
+function mergePdfRows(existingRows, incomingRows) {
+  const merged = Array.isArray(existingRows) ? existingRows.slice() : [];
+  const seen = new Set(merged.map(r => r && r.trackingId).filter(Boolean));
+  (incomingRows || []).forEach(r => {
+    if (!r || !r.trackingId || seen.has(r.trackingId)) return;
+    seen.add(r.trackingId);
+    merged.push(r);
+  });
+  return merged;
+}
+
 function setStatus(msg, isError, kind = 'neutral') {
   const el = document.getElementById('status');
   el.textContent = msg;
@@ -377,11 +388,10 @@ async function handleFile(file) {
     const buf = await file.arrayBuffer();
     try {
       const rows = await extractPDFRows(buf);
-      pdfRows = rows;
-      // update the chip detail
+      pdfRows = mergePdfRows(pdfRows, rows);
       const chips = document.querySelectorAll('.file-chip');
       const lastChip = chips[chips.length - 1];
-      if (lastChip) lastChip.querySelector('.detail').textContent = rows.length + ' parcels found';
+      if (lastChip) lastChip.querySelector('.detail').textContent = pdfRows.length + ' parcels found';
     } catch (e) {
       const chips = document.querySelectorAll('.file-chip');
       const lastChip = chips[chips.length - 1];
@@ -431,7 +441,7 @@ function rebuild() {
   const simOn = document.getElementById('simToggle').checked;
   document.getElementById('simNote').className = 'toggle-note' + (simOn ? ' show' : '');
 
-  // base list: prefer PDF (the physical packed manifest) if available, else CSV
+  // base list: use all collected PDF parcel rows, or fall back to the CSV orders
   let base = [];
   if (pdfRows && pdfRows.length) {
     base = pdfRows.map(r => ({ trackingId: r.trackingId, orderId: r.orderId, sku: r.sku }));
