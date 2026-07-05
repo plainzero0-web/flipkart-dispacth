@@ -572,7 +572,7 @@ function queueCameraScan(decodedText) {
   const looksLikeParcelCode = /[A-Z0-9]{4,}/.test(id) && !/^(HTTP|HTTPS|WWW|OD|QR|MOBILE|WIFI)/i.test(raw);
   if (!looksLikeParcelCode) return;
 
-  if (id === lastCameraScan.code && (now - lastCameraScan.time) < 300) return;
+  if (id === lastCameraScan.code && (now - lastCameraScan.time) < 120) return;
   lastCameraScan = { code: id, time: now };
 
   if (orderMap.has(id)) {
@@ -583,13 +583,14 @@ function queueCameraScan(decodedText) {
 async function startCameraScanner() {
   html5QrCode = new Html5Qrcode('cameraView');
   const config = {
-    fps: 15,
-    qrbox: { width: 360, height: 260 },
+    fps: 20,
+    qrbox: { width: 420, height: 320 },
     aspectRatio: 0.95,
+    disableFlip: false,
     videoConstraints: {
       facingMode: 'environment',
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
+      width: { ideal: 1920 },
+      height: { ideal: 1080 }
     },
     formatsToSupport: [
       Html5QrcodeSupportedFormats.CODE_128,
