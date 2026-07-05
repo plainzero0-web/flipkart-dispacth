@@ -74,6 +74,15 @@
     width: 100%; font-size: 22px; padding: 14px; border-radius: 10px;
     border: 2px solid #999; text-align: center; font-weight: 600;
   }
+  #scanInput.warn-pulse {
+    animation: warnPulse 0.8s ease 2;
+    border-color: #c99a06;
+  }
+  @keyframes warnPulse {
+    0% { box-shadow: 0 0 0 0 rgba(201, 154, 6, 0.25); }
+    50% { box-shadow: 0 0 0 6px rgba(201, 154, 6, 0.25); }
+    100% { box-shadow: 0 0 0 0 rgba(201, 154, 6, 0); }
+  }
   #liveFlash { display: none; margin-top: 12px; border-radius: 12px; padding: 16px; text-align: center; }
   #liveFlash.ok { background: #d7f5df; border: 2px solid #2fa84f; }
   #liveFlash.cancelled { background: #fbdada; border: 2px solid #d33; }
@@ -340,10 +349,11 @@ function addFileChip(name, type, detail) {
   wrap.appendChild(chip);
 }
 
-function setStatus(msg, isError) {
+function setStatus(msg, isError, kind = 'neutral') {
   const el = document.getElementById('status');
   el.textContent = msg;
-  el.style.color = isError ? '#c00' : '#2a2';
+  if (kind === 'warning') el.style.color = '#c99a06';
+  else el.style.color = isError ? '#c00' : '#2a2';
 }
 
 async function handleFile(file) {
@@ -519,12 +529,23 @@ function updateStats() {
 
 let flashResetTimer = null;
 let continuousAlertTimer = null;
+let warnPulseTimer = null;
 
 function stopContinuousAlert() {
   if (continuousAlertTimer) {
     clearInterval(continuousAlertTimer);
     continuousAlertTimer = null;
   }
+}
+
+function pulseScanInput() {
+  const el = document.getElementById('scanInput');
+  if (!el) return;
+  el.classList.remove('warn-pulse');
+  void el.offsetWidth;
+  el.classList.add('warn-pulse');
+  if (warnPulseTimer) clearTimeout(warnPulseTimer);
+  warnPulseTimer = setTimeout(() => el.classList.remove('warn-pulse'), 900);
 }
 
 function flash(status, sku, rawId) {
@@ -545,9 +566,12 @@ function flash(status, sku, rawId) {
     skuEl.textContent = sku || '';
   } else if (status === 'warn') {
     stopContinuousAlert();
-    icon.textContent = '⚠️'; msg.textContent = 'Unrecognized ID — not in loaded list';
-    beep(500, 0.12); setTimeout(() => beep(500, 0.12), 180);
-    skuEl.innerHTML = 'Scanned value: <b style="font-family:monospace;">' + (rawId || '') + '</b> — check this parcel manually';
+    icon.textContent = '⚠️'; msg.textContent = 'Not in this dispatch list';
+    beep(500, 0.12, 0.24); setTimeout(() => beep(460, 0.12, 0.2), 160);
+    if (navigator.vibrate) navigator.vibrate([140, 50, 140]);
+    skuEl.innerHTML = 'Scanned value: <b style="font-family:monospace;">' + (rawId || '') + '</b><br>Old or irrelevant order — ignore or check manually';
+    setStatus('Scanned code is not in the current loaded list.', false, 'warning');
+    pulseScanInput();
   }
 
   if (flashResetTimer) clearTimeout(flashResetTimer);
