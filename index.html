@@ -29,6 +29,11 @@
     margin-bottom: 14px;
     box-shadow: 0 1px 2px rgba(0,0,0,0.03);
   }
+  .sticky-panel {
+    position: sticky;
+    top: 8px;
+    z-index: 20;
+  }
   label { font-size: 12.5px; color: #555; display: block; margin-bottom: 6px; font-weight: 600; }
   button {
     background: #1a1a1a; color: #fff; border: none; border-radius: 8px;
@@ -156,7 +161,7 @@
   <div class="toggle-note" id="simNote">Test mode: 5 orders from your CSV are being randomly marked "cancelled" just so you can see how the highlighting and scanning behaves. This is NOT real cancellation data.</div>
 </div>
 
-<div class="card" id="summaryCard" style="display:none;">
+<div class="card sticky-panel" id="summaryCard" style="display:none;">
   <div class="summary-row">
     <div class="stat total"><div class="icon">📦</div><div class="num" id="statTotal">0</div><div class="lbl">Total packed</div></div>
     <div class="stat ready"><div class="icon">🚚</div><div class="num" id="statReady">0</div><div class="lbl">Ready to dispatch</div></div>
@@ -166,7 +171,7 @@
   </div>
 </div>
 
-<div class="card">
+<div class="card sticky-panel" id="scanCard">
   <label>Scan or type parcel tracking number / AWB</label>
   <input type="text" id="scanInput" placeholder="Scan barcode here" autocomplete="off" />
   <button id="cameraBtn" style="width:100%; margin-top:10px;">📷 Scan with camera</button>
@@ -603,8 +608,10 @@ function processScan(rawValue) {
   flash(order.status === 'ok' ? 'ok' : 'cancelled', order.sku);
   renderTable();
   updateStats();
-  const row = document.getElementById('row-' + id);
-  if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (order.status === 'cancelled') {
+    const row = document.getElementById('row-' + id);
+    if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 }
 
 let scanInputTimer = null;
