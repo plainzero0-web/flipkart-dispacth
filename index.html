@@ -639,10 +639,10 @@ function queueCameraScan(decodedText) {
   const looksLikeParcelCode = /[A-Z0-9]{4,}/.test(id) && !/^(HTTP|HTTPS|WWW|OD|QR|MOBILE|WIFI)/i.test(raw);
   if (!looksLikeParcelCode) return;
 
-  if (id === lastCameraScan.code && (now - lastCameraScan.time) < 120) return;
+  if (id === lastCameraScan.code && (now - lastCameraScan.time) < 55) return;
 
   cameraCandidateBuffer.push({ raw, time: now });
-  cameraCandidateBuffer = cameraCandidateBuffer.filter(c => now - c.time < 800);
+  cameraCandidateBuffer = cameraCandidateBuffer.filter(c => now - c.time < 650);
 
   if (cameraCandidateTimer) clearTimeout(cameraCandidateTimer);
   cameraCandidateTimer = setTimeout(() => {
@@ -655,7 +655,7 @@ function queueCameraScan(decodedText) {
     if (orderMap.has(bestId)) {
       processScan(bestId);
     }
-  }, 90);
+  }, 60);
 }
 
 async function startCameraScanner() {
