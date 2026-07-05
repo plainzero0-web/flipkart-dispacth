@@ -676,9 +676,7 @@ function queueCameraScan(decodedText) {
     if (!bestId) return;
 
     lastCameraScan = { code: bestId, time: Date.now() };
-    if (orderMap.has(bestId)) {
-      processScan(bestId);
-    }
+    processScan(bestId);
   }, 60);
 }
 
