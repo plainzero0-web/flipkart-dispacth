@@ -558,22 +558,6 @@ scanInputEl.addEventListener('keydown', function(e) {
 /* ---------- Camera scanning ---------- */
 let html5QrCode = null;
 let lastCameraScan = { code: '', time: 0 };
-let pendingCameraScan = null;
-let pendingCameraTimer = null;
-let cameraCandidate = { value: '', hits: 0, time: 0 };
-let cameraStream = null;
-let cameraVideo = null;
-let barcodeDetector = null;
-let barcodeLoopHandle = null;
-let lastBarcodeFrameTime = 0;
-
-function clearPendingCameraScan() {
-  if (pendingCameraTimer) {
-    clearTimeout(pendingCameraTimer);
-    pendingCameraTimer = null;
-  }
-  pendingCameraScan = null;
-}
 
 function queueCameraScan(decodedText) {
   const id = normalize(decodedText).replace(/[^A-Z0-9]/g, '');
@@ -581,147 +565,46 @@ function queueCameraScan(decodedText) {
 
   const now = Date.now();
   const looksLikeParcelCode = /^[A-Z0-9]{4,20}$/.test(id) && !/^(HTTP|HTTPS|WWW|OD|QR|MOBILE)/i.test(id);
-
-  if (!looksLikeParcelCode) {
-    clearPendingCameraScan();
-    return;
-  }
+  if (!looksLikeParcelCode) return;
 
   if (id === lastCameraScan.code && (now - lastCameraScan.time) < 900) return;
   lastCameraScan = { code: id, time: now };
 
   if (orderMap.has(id)) {
-    clearPendingCameraScan();
     processScan(id);
-    return;
   }
-
-  if (cameraCandidate.value === id && (now - cameraCandidate.time) < 500) {
-    cameraCandidate.hits += 1;
-  } else {
-    cameraCandidate = { value: id, hits: 1, time: now };
-  }
-
-  if (pendingCameraTimer) clearTimeout(pendingCameraTimer);
-  pendingCameraScan = id;
-  pendingCameraTimer = setTimeout(() => {
-    const finalId = normalize(pendingCameraScan).replace(/[^A-Z0-9]/g, '');
-    if (!finalId) {
-      clearPendingCameraScan();
-      return;
-    }
-    if (orderMap.has(finalId)) {
-      clearPendingCameraScan();
-      processScan(finalId);
-    } else {
-      flash('warn', '', finalId);
-      clearPendingCameraScan();
-    }
-  }, cameraCandidate.hits >= 2 ? 250 : 500);
-}
-
-async function startNativeBarcodeScanner(cameraView) {
-  if (!('BarcodeDetector' in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    throw new Error('Native BarcodeDetector is not available on this device.');
-  }
-
-  const detector = new BarcodeDetector({
-    formats: ['code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'itf']
-  });
-
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode: { ideal: 'environment' },
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
-    },
-    audio: false
-  });
-
-  const video = document.createElement('video');
-  video.autoplay = true;
-  video.playsInline = true;
-  video.muted = true;
-  video.srcObject = stream;
-  video.style.width = '100%';
-  video.style.height = '100%';
-  video.style.objectFit = 'cover';
-  cameraView.innerHTML = '';
-  cameraView.appendChild(video);
-  await video.play();
-
-  cameraStream = stream;
-  cameraVideo = video;
-  barcodeDetector = detector;
-  lastBarcodeFrameTime = 0;
-
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-
-  const scanLoop = async () => {
-    if (!cameraVideo || cameraVideo.readyState < 2) {
-      barcodeLoopHandle = requestAnimationFrame(scanLoop);
-      return;
-    }
-
-    const now = Date.now();
-    if (now - lastBarcodeFrameTime < 450) {
-      barcodeLoopHandle = requestAnimationFrame(scanLoop);
-      return;
-    }
-    lastBarcodeFrameTime = now;
-
-    canvas.width = cameraVideo.videoWidth || 1280;
-    canvas.height = cameraVideo.videoHeight || 720;
-    context.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
-
-    try {
-      const barcodes = await detector.detect(canvas);
-      const code = barcodes && barcodes[0] && barcodes[0].rawValue;
-      if (code) queueCameraScan(code);
-    } catch (e) {}
-
-    barcodeLoopHandle = requestAnimationFrame(scanLoop);
-  };
-
-  barcodeLoopHandle = requestAnimationFrame(scanLoop);
 }
 
 async function startCameraScanner() {
-  const cameraView = document.getElementById('cameraView');
-  try {
-    await startNativeBarcodeScanner(cameraView);
-  } catch (err) {
-    html5QrCode = new Html5Qrcode('cameraView');
-    const config = {
-      fps: 12,
-      qrbox: { width: 360, height: 240 },
-      aspectRatio: 0.95,
-      videoConstraints: {
-        facingMode: 'environment',
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      },
-      formatsToSupport: [
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.ITF
-      ]
-    };
+  html5QrCode = new Html5Qrcode('cameraView');
+  const config = {
+    fps: 10,
+    qrbox: { width: 320, height: 220 },
+    aspectRatio: 0.95,
+    videoConstraints: {
+      facingMode: 'environment',
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
+    },
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.ITF
+    ]
+  };
 
-    await html5QrCode.start(
-      { facingMode: 'environment' },
-      config,
-      (decodedText) => {
-        queueCameraScan(decodedText);
-      },
-      () => { /* ignore per-frame decode failures */ }
-    );
-  }
+  await html5QrCode.start(
+    { facingMode: 'environment' },
+    config,
+    (decodedText) => {
+      queueCameraScan(decodedText);
+    },
+    () => { /* ignore per-frame decode failures */ }
+  );
 }
 
 document.getElementById('cameraBtn').addEventListener('click', async function() {
@@ -738,20 +621,9 @@ document.getElementById('cameraBtn').addEventListener('click', async function() 
 });
 
 document.getElementById('cameraStop').addEventListener('click', async function() {
-  if (barcodeLoopHandle) {
-    cancelAnimationFrame(barcodeLoopHandle);
-    barcodeLoopHandle = null;
-  }
-  if (cameraStream) {
-    cameraStream.getTracks().forEach(track => track.stop());
-    cameraStream = null;
-  }
-  if (cameraVideo) {
-    cameraVideo.srcObject = null;
-    cameraVideo = null;
-  }
   if (html5QrCode) {
     try { await html5QrCode.stop(); html5QrCode.clear(); } catch (e) {}
+    html5QrCode = null;
   }
   document.getElementById('cameraWrap').style.display = 'none';
   document.getElementById('cameraBtn').style.display = 'block';
